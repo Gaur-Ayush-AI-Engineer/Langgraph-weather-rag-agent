@@ -1,4 +1,5 @@
 langchain==0.3.27
+ragas
 langchain-openai
 langchain-community
 langchain-qdrant

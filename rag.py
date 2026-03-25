@@ -15,13 +15,19 @@ load_dotenv()
 
 
 class RAGTool:
-    def __init__(self):
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, chunker=None,
+                 rerank_threshold: float = 0.0, query_strategy=None):
         self.embeddings = OpenAIEmbeddings()
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
         self.client = QdrantClient(url="http://localhost:6333")
         self.vectorstore = None
         self.current_pdf_name = None
         self.current_collection_name = None
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.chunker = chunker
+        self.rerank_threshold = rerank_threshold
+        self.query_strategy = query_strategy  # QueryRewriter | MultiQueryRetriever | None
     
     def _sanitize_collection_name(self, pdf_name: str) -> str:
         """
@@ -37,8 +43,9 @@ class RAGTool:
         name = pdf_name.replace('.pdf', '')
         # Replace spaces and special chars with underscore
         name = ''.join(c if c.isalnum() else '_' for c in name)
-        # Limit length and add prefix
-        name = f"pdf_{name[:50]}"
+        # Include chunker type + chunk size so each config gets its own collection
+        chunker_tag = "struct" if self.chunker is not None else f"c{self.chunk_size}"
+        name = f"pdf_{name[:45]}_{chunker_tag}"
         return name.lower()
     
     def load_pdf(self, pdf_path: str) -> bool:
@@ -72,13 +79,16 @@ class RAGTool:
                 loader = PyPDFLoader(pdf_path)
                 documents = loader.load()
                 
-                # Split into chunks
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=1000,
-                    chunk_overlap=200,
-                    length_function=len
-                )
-                splits = text_splitter.split_documents(documents)
+                # Split into chunks — use custom chunker if provided
+                if self.chunker is not None:
+                    splits = self.chunker.split_documents(documents)
+                else:
+                    text_splitter = RecursiveCharacterTextSplitter(
+                        chunk_size=self.chunk_size,
+                        chunk_overlap=self.chunk_overlap,
+                        length_function=len
+                    )
+                    splits = text_splitter.split_documents(documents)
                 
                 # Store in Qdrant
                 QdrantVectorStore.from_documents(
@@ -160,9 +170,16 @@ class RAGTool:
         print("\n--- Reranking Scores ---")
         for result in results[:5]:
             print(f"Doc {result['id']}: Score = {result['score']:.4f}")
-        
-        top_indices = [result['id'] for result in results[:3]]
-        
+
+        # Apply threshold — keep top 3 that meet the minimum score
+        above_threshold = [r for r in results[:3] if r['score'] >= self.rerank_threshold]
+
+        # Fallback: if all chunks are below threshold, keep the single best one
+        if not above_threshold:
+            print(f"⚠️  All scores below threshold ({self.rerank_threshold}), using top-1 as fallback")
+            above_threshold = [results[0]]
+
+        top_indices = [r['id'] for r in above_threshold]
         return [documents[i] for i in top_indices]
     
     def query(self, question: str, chat_history: List = None) -> Dict:
@@ -179,23 +196,35 @@ class RAGTool:
         if not self.vectorstore:
             return {
                 "answer": "No PDF loaded. Please upload a PDF first.",
-                "sources": []
+                "sources": [],
+                "contexts": []
             }
         
         if chat_history is None:
             chat_history = []
         
         try:
-            # Direct retrieval
+            from query_strategies import QueryRewriter, MultiQueryRetriever
+
             retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
-            docs = retriever.invoke(question)
-            
+
+            # Apply query strategy before retrieval
+            if isinstance(self.query_strategy, QueryRewriter):
+                search_query = self.query_strategy.rewrite(question)
+                docs = retriever.invoke(search_query)
+            elif isinstance(self.query_strategy, MultiQueryRetriever):
+                docs = self.query_strategy.retrieve_and_deduplicate(question, retriever, k=5)
+            else:
+                print(f"\n   Query: {question}")
+                docs = retriever.invoke(question)
+
             print(f"\n--- Retrieved {len(docs)} documents from {self.current_collection_name} ---")
             
             if not docs:
                 return {
                     "answer": "No relevant information found in the document.",
-                    "sources": []
+                    "sources": [],
+                    "contexts": []
                 }
             
             # Rerank documents
@@ -228,14 +257,16 @@ class RAGTool:
                         "metadata": doc.metadata
                     }
                     for doc in reranked_docs
-                ]
+                ],
+                "contexts": [doc.page_content for doc in reranked_docs]
             }
             
         except Exception as e:
             print(f"❌ Query error: {str(e)}")
             return {
                 "answer": f"Error processing query: {str(e)}",
-                "sources": []
+                "sources": [],
+                "contexts": []
             }
 
 

@@ -1,0 +1,42 @@
+[
+  {
+    "question": "How many layers does the encoder stack have in the base Transformer model?",
+    "ground_truth": "The encoder stack in the base Transformer model has 6 identical layers (N=6)."
+  },
+  {
+    "question": "How many attention heads does the base Transformer model use in multi-head attention?",
+    "ground_truth": "The base Transformer model uses 8 parallel attention heads (h=8)."
+  },
+  {
+    "question": "What is the inner-layer dimensionality of the position-wise feed-forward networks?",
+    "ground_truth": "The inner-layer of the position-wise feed-forward network has dimensionality d_ff=2048."
+  },
+  {
+    "question": "How does the decoder differ from the encoder in its attention mechanism?",
+    "ground_truth": "The decoder has three sublayers instead of two: a masked multi-head self-attention sublayer (which prevents positions from attending to subsequent positions), a multi-head cross-attention sublayer that attends over the encoder output, and a position-wise feed-forward sublayer. The masking ensures the decoder's self-attention is auto-regressive."
+  },
+  {
+    "question": "What is the scaled dot-product attention formula used in the Transformer?",
+    "ground_truth": "Scaled dot-product attention is computed as: Attention(Q,K,V) = softmax(Q*K^T / sqrt(d_k)) * V, where Q, K, and V are the query, key, and value matrices, and d_k is the dimension of the keys."
+  },
+  {
+    "question": "How does the Transformer encode positional information?",
+    "ground_truth": "The Transformer uses positional encodings added to the input embeddings. The encodings use sine and cosine functions of different frequencies: PE(pos, 2i) = sin(pos/10000^(2i/d_model)) and PE(pos, 2i+1) = cos(pos/10000^(2i/d_model)). This allows the model to learn to attend to relative positions."
+  },
+  {
+    "question": "What optimizer was used to train the Transformer, and what were its hyperparameters?",
+    "ground_truth": "The Adam optimizer was used with hyperparameters beta1=0.9, beta2=0.98, and epsilon=10^-9."
+  },
+  {
+    "question": "What learning rate schedule was used during Transformer training?",
+    "ground_truth": "A custom schedule was used that increases the learning rate linearly for the first warmup_steps training steps, then decreases it proportionally to the inverse square root of the step number. The formula is: lrate = d_model^(-0.5) * min(step^(-0.5), step * warmup_steps^(-1.5)), with warmup_steps=4000."
+  },
+  {
+    "question": "What BLEU score did the big Transformer achieve on WMT 2014 English-to-German translation?",
+    "ground_truth": "The big Transformer achieved a BLEU score of 28.4 on the WMT 2014 English-to-German translation task, outperforming all previously published models including ensembles."
+  },
+  {
+    "question": "What datasets were used to evaluate the Transformer's translation performance?",
+    "ground_truth": "The Transformer was evaluated on two tasks from WMT 2014: English-to-German translation (approximately 4.5 million sentence pairs) and English-to-French translation (approximately 36 million sentence pairs)."
+  }
+]
