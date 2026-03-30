@@ -127,12 +127,34 @@ This means ingestion only happens once per unique PDF + chunker combo. Changing 
 
 ---
 
-## What was tuned and why
+## Evaluation results (final — completed)
 
-- **Chunk size 1000 → 500**: hurt context recall (chunks too small, concepts split across chunks)
-- **Structure-aware chunking**: introduced to keep section content together; better than fixed-size
-- **Rerank threshold sweep** (0.0, 0.1, 0.2, 0.3, 0.5): best was `0.0` — filtering dropped useful chunks
-- **Query strategies**: added to improve `context_precision` (was ~0.67), which was the weakest metric
+Evaluation ran 3 query strategies on 10 Q&A pairs from the "Attention Is All You Need" paper using `StructureAwareChunker`, chunk_size=1000, rerank_threshold=0.0.
+
+| Metric | none | rewrite | multi |
+|---|---|---|---|
+| faithfulness | **0.9104** | NaN | 0.8917 |
+| answer_relevancy | 0.8628 | 0.8726 | **0.8740** |
+| context_precision | 0.6667 | 0.6667 | **0.6750** |
+| context_recall | **0.8000** | 0.7500 | 0.7500 |
+
+**Winner overall: "none"** (best faithfulness + recall, no NaN issues)
+**"multi" wins narrowly on context_precision** (0.675 vs 0.667)
+
+Result files in repo root: `eval_results_struct_none.json`, `eval_results_struct_rewrite.json`, `eval_results_struct_multi.json`
+
+---
+
+## What was tuned and what was found
+
+- **Chunk size 1000 → 500**: hurt context recall — concepts got split across chunk boundaries. Stayed at 1000.
+- **Structure-aware chunking**: keeps section content together; better than fixed-size `RecursiveCharacterTextSplitter`. Final config uses this.
+- **Rerank threshold sweep** (0.0, 0.1, 0.2, 0.3, 0.5): best was `0.0` — any filtering dropped useful chunks.
+- **Query strategies**: added to improve context_precision (weakest metric at 0.667). Result: barely moved it. "multi" achieved 0.675, "rewrite" stayed at 0.667. Not worth the added LLM cost for most use cases.
+
+**Critical gotcha — "rewrite" strategy NaN faithfulness**: RAGAS failed to compute faithfulness for the rewrite strategy (returned NaN). Likely caused by a context formatting issue specific to how rewritten queries return chunks. The code runs without error but the metric is invalid. Do not rely on "rewrite" faithfulness scores.
+
+**Context precision is the ceiling**: all strategies plateaued at 0.667–0.675. This is a retrieval quality issue — the Qdrant index or embedding model may not distinguish highly similar Transformer paper sections well. Query-side strategies alone can't fix it.
 
 ---
 

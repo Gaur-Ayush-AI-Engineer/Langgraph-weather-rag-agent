@@ -38,7 +38,7 @@ project/
 ├── evaluate_rag.py           # RAGAS evaluation script — sweeps query strategies
 ├── eval_data/
 │   ├── attention_is_all_you_need.pdf   # PDF used for evaluation
-│   └── golden_dataset.json             # 20 Q&A pairs for RAGAS evaluation
+│   └── golden_dataset.json             # 10 Q&A pairs for RAGAS evaluation
 ├── tests/
 │   ├── test_weather.py
 │   ├── test_rag.py
@@ -152,17 +152,32 @@ eval_results_struct_multi.json
 python evaluate_rag.py
 ```
 
-**Sample output:**
-```
-  QUERY STRATEGY COMPARISON
-  Metric               none          rewrite       multi
-  faithfulness         0.94          ...           ...
-  answer_relevancy     0.87          ...           ...
-  context_precision    0.67          ...           ...
-  context_recall       0.80          ...           ...
+**Actual results (structure-aware chunking, chunk_size=1000, rerank_threshold=0.0):**
 
-🏆 Best strategy: 'rewrite'  (avg score: 0.84)
-```
+| Metric | none | rewrite | multi |
+|---|---|---|---|
+| faithfulness | **0.9104** | NaN* | 0.8917 |
+| answer_relevancy | 0.8628 | 0.8726 | **0.8740** |
+| context_precision | 0.6667 | 0.6667 | **0.6750** |
+| context_recall | **0.8000** | 0.7500 | 0.7500 |
+
+**Overall winner: `none`** — best faithfulness and context recall, no metric failures.
+**`multi` wins narrowly on context_precision** (0.675 vs 0.667).
+
+*`rewrite` strategy returned NaN for faithfulness — RAGAS metric computation failed for that strategy, likely a context formatting issue. Treat rewrite faithfulness scores as invalid.
+
+---
+
+## RAG Tuning Findings
+
+| What was tested | Result |
+|---|---|
+| Chunk size 500 vs 1000 | 500 hurt context recall — concepts split across boundaries. **Kept 1000.** |
+| Fixed-size vs structure-aware chunking | Structure-aware keeps section content together. **Better overall.** |
+| Rerank threshold (0.0 / 0.1 / 0.2 / 0.3 / 0.5) | Any filtering dropped useful chunks. **Best: 0.0 (keep all top-3).** |
+| Query strategies (none / rewrite / multi) | Minimal improvement on context_precision (+0.008 max). **Not worth LLM cost at scale.** |
+
+**Context precision is the ceiling.** All strategies plateaued at 0.667–0.675. This is a retrieval-side issue — query strategies alone can't fix it. Improving embeddings or the Qdrant index configuration would be the next lever.
 
 ---
 
